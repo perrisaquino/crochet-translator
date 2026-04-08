@@ -1525,6 +1525,12 @@ function generatePattern() {
   else if(mode==='grid') generateGridPattern();
 }
 
+let _scheduleTimer = null;
+function scheduleUpdate() {
+  clearTimeout(_scheduleTimer);
+  _scheduleTimer = setTimeout(generatePattern, 50);
+}
+
 function setStat(rnds,max,total){
   document.getElementById('sRnds').textContent=rnds;
   document.getElementById('sMax').textContent=max;
