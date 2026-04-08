@@ -3,7 +3,7 @@
 #
 # Install globally: ln -sf "$(pwd)/crochet" /usr/local/bin/crochet
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 VENV="$SCRIPT_DIR/.venv"
 PORT="${CROCHET_PORT:-8000}"
 URL="http://localhost:$PORT"
