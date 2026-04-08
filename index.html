@@ -1796,35 +1796,42 @@ document.getElementById('generatePhotoBtn').addEventListener('click', async () =
   setProgressStep('Analyzing photos');
   document.getElementById('generatePhotoBtn').disabled = true;
 
-  const resp = await fetch('/api/reconstruct', { method: 'POST', body: formData });
-  const { job_id } = await resp.json();
-  currentJobId = job_id;
+  try {
+    const resp = await fetch('/api/reconstruct', { method: 'POST', body: formData });
+    if (!resp.ok) throw new Error(`Reconstruct API returned ${resp.status}`);
+    const { job_id } = await resp.json();
+    currentJobId = job_id;
 
-  pollTimer = setInterval(async () => {
-    try {
-      const jr = await fetch(`/api/job/${job_id}`);
-      const job = await jr.json();
+    pollTimer = setInterval(async () => {
+      try {
+        const jr = await fetch(`/api/job/${job_id}`);
+        const job = await jr.json();
 
-      if (job.step) setProgressStep(job.step);
+        if (job.step) setProgressStep(job.step);
 
-      if (job.status === 'complete') {
-        clearInterval(pollTimer);
-        loadMeshIntoViewer(job.mesh_url);
-        await fetchAndRenderPattern(job_id);
-        document.getElementById('generatePhotoBtn').disabled = false;
-      } else if (job.status === 'error') {
+        if (job.status === 'complete') {
+          clearInterval(pollTimer);
+          loadMeshIntoViewer(job.mesh_url);
+          await fetchAndRenderPattern(job_id);
+          document.getElementById('generatePhotoBtn').disabled = false;
+        } else if (job.status === 'error') {
+          clearInterval(pollTimer);
+          hideProgress();
+          alert('Error: ' + job.step);
+          document.getElementById('generatePhotoBtn').disabled = false;
+        }
+      } catch (err) {
         clearInterval(pollTimer);
         hideProgress();
-        alert('Error: ' + job.step);
+        alert('Network error while checking job status. Please try again.');
         document.getElementById('generatePhotoBtn').disabled = false;
       }
-    } catch (err) {
-      clearInterval(pollTimer);
-      hideProgress();
-      alert('Network error while checking job status. Please try again.');
-      document.getElementById('generatePhotoBtn').disabled = false;
-    }
-  }, 2000);
+    }, 2000);
+  } catch (err) {
+    hideProgress();
+    alert('Failed to start reconstruction: ' + err.message);
+    document.getElementById('generatePhotoBtn').disabled = false;
+  }
 });
 </script>
 </body>
