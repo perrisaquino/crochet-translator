@@ -1121,7 +1121,7 @@ function updateModeUI() {
   document.getElementById('photoPanel').style.display  = mode==='photo'  ?'flex':'none';
   document.getElementById('profDims').style.display    = mode==='profile'?'flex':'none';
   document.getElementById('gridDims').style.display    = mode==='grid'   ?'flex':'none';
-  const badges = { profile:'Surface of revolution', labubu:'Labubu figure', grid:'Tube wrap preview', photo:'Photo reconstruction' };
+  const badges = { profile:'Surface of revolution', labubu:'Labubu figure', grid:'Flat swatch preview', photo:'Photo reconstruction' };
   document.getElementById('viewBadge').textContent = badges[mode] || '';
   document.getElementById('patTitle').textContent = mode==='labubu'?'Clothes Pattern':mode==='photo'?'Amigurumi Pattern':'Crochet Pattern';
   orbit.target.set(0, mode==='labubu'?2:0, 0);
@@ -1419,25 +1419,25 @@ function generateGridPattern() {
   rows.push({type:'end'});
   setStat(gRows,gCols,totalSts);
 
-  // 3D: tube with color texture
+  // Flat swatch preview
   clearScene();
   const ht=parseFloat(document.getElementById('heightIn').value)||4;
   const diam=parseFloat(document.getElementById('diamIn').value)||4;
-  const r=diam/2*1.1, scale=2.2;
-  const geo=new THREE.CylinderGeometry(r*scale,r*scale,ht*scale,gCols,gRows,true);
+  const pw=diam*2.2, ph=ht*2.2;
+  const geo=new THREE.PlaneGeometry(pw,ph,gCols,gRows);
   const pos=geo.attributes.position;
   const colors=new Float32Array(pos.count*3);
   for(let i=0;i<pos.count;i++){
-    const py=pos.getY(i);
-    const angle=Math.atan2(pos.getZ(i),pos.getX(i));
-    const ri=Math.max(0,Math.min(gRows-1,Math.floor(((py/(ht*scale))+0.5)*gRows)));
-    const ci=Math.floor((((angle/Math.PI)+1)/2*gCols+gCols))%gCols;
-    const hex=gridData[Math.min(gRows-1,ri)]?.[ci];
-    const rgb=hex?hexRGB(hex):{r:.55,g:.65,b:.55};
+    const u=pos.getX(i)/pw+0.5;
+    const v=0.5-pos.getY(i)/ph;
+    const ci=Math.min(gCols-1,Math.max(0,Math.floor(u*gCols)));
+    const ri=Math.min(gRows-1,Math.max(0,Math.floor(v*gRows)));
+    const hex=gridData[ri]?.[ci];
+    const rgb=hex?hexRGB(hex):{r:.93,g:.90,b:.85};
     colors[i*3]=rgb.r;colors[i*3+1]=rgb.g;colors[i*3+2]=rgb.b;
   }
   geo.setAttribute('color',new THREE.BufferAttribute(colors,3));
-  const mat=new THREE.MeshPhongMaterial({vertexColors:true,shininess:15,side:THREE.DoubleSide});
+  const mat=new THREE.MeshPhongMaterial({vertexColors:true,shininess:5,side:THREE.DoubleSide});
   mainMesh=new THREE.Mesh(geo,mat);mainMesh.castShadow=true;
   scene.add(mainMesh);
   renderGridPat(rows, colorArr, colorLabels);
@@ -1525,7 +1525,7 @@ function generatePattern() {
   else if(mode==='grid') generateGridPattern();
 }
 
-let _scheduleTimer = null;
+var _scheduleTimer = null;
 function scheduleUpdate() {
   clearTimeout(_scheduleTimer);
   _scheduleTimer = setTimeout(generatePattern, 50);
