@@ -1578,7 +1578,7 @@ setTimeout(()=>{
 },100);
 
 // ── PHOTO MODE ──────────────────────────────────────────────
-const PHOTO_GAUGE_TABLE = {
+const GAUGE_TABLE = {
   'lace':      { 1.5: 34, 2.0: 32 },
   'fingering': { 2.25: 30, 2.5: 28, 3.0: 26 },
   'sport':     { 3.0: 24, 3.5: 22 },
@@ -1592,18 +1592,18 @@ let currentJobId = null;
 let pollTimer    = null;
 
 // Auto-fill gauge when yarn/hook changes
-function updateGaugeFromYarn() {
+function updateGauge() {
   const w = document.getElementById('yarnWeight').value;
   const h = parseFloat(document.getElementById('hookSize').value);
-  const table = PHOTO_GAUGE_TABLE[w] || {};
+  const table = GAUGE_TABLE[w] || {};
   const keys = Object.keys(table).map(Number);
   if (keys.length === 0) return;
   const closest = keys.reduce((a, b) => Math.abs(b - h) < Math.abs(a - h) ? b : a, keys[0]);
   document.getElementById('gaugeVal').value = table[closest];
 }
 
-document.getElementById('yarnWeight').addEventListener('change', updateGaugeFromYarn);
-document.getElementById('hookSize').addEventListener('change', updateGaugeFromYarn);
+document.getElementById('yarnWeight').addEventListener('change', updateGauge);
+document.getElementById('hookSize').addEventListener('change', updateGauge);
 
 // Enable/disable Generate button
 function checkGenerateReady() {
