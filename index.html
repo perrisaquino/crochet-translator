@@ -1118,11 +1118,12 @@ function updateModeUI() {
   document.getElementById('leftProfile').style.display = mode==='profile'?'flex':'none';
   document.getElementById('leftLabubu').style.display  = mode==='labubu' ?'flex':'none';
   document.getElementById('leftGrid').style.display    = mode==='grid'   ?'flex':'none';
+  document.getElementById('photoPanel').style.display  = mode==='photo'  ?'flex':'none';
   document.getElementById('profDims').style.display    = mode==='profile'?'flex':'none';
   document.getElementById('gridDims').style.display    = mode==='grid'   ?'flex':'none';
-  const badges = { profile:'Surface of revolution', labubu:'Labubu figure', grid:'Tube wrap preview' };
-  document.getElementById('viewBadge').textContent = badges[mode];
-  document.getElementById('patTitle').textContent = mode==='labubu'?'Clothes Pattern':'Crochet Pattern';
+  const badges = { profile:'Surface of revolution', labubu:'Labubu figure', grid:'Tube wrap preview', photo:'Photo reconstruction' };
+  document.getElementById('viewBadge').textContent = badges[mode] || '';
+  document.getElementById('patTitle').textContent = mode==='labubu'?'Clothes Pattern':mode==='photo'?'Amigurumi Pattern':'Crochet Pattern';
   orbit.target.set(0, mode==='labubu'?2:0, 0);
 }
 
@@ -1518,6 +1519,7 @@ function drawStitchChart(){
 //  MAIN UPDATE DISPATCH
 // ═══════════════════════════════════════════════════════════
 function generatePattern() {
+  if(mode==='photo') return;
   if(mode==='profile') generateProfilePattern();
   else if(mode==='labubu') generateLabubuPattern();
   else if(mode==='grid') generateGridPattern();
@@ -1574,6 +1576,240 @@ setTimeout(()=>{
   handleResize();
   generatePattern();
 },100);
+
+// ── PHOTO MODE ──────────────────────────────────────────────
+const PHOTO_GAUGE_TABLE = {
+  'lace':      { 1.5: 34, 2.0: 32 },
+  'fingering': { 2.25: 30, 2.5: 28, 3.0: 26 },
+  'sport':     { 3.0: 24, 3.5: 22 },
+  'dk':        { 3.5: 20, 4.0: 19 },
+  'worsted':   { 4.5: 18, 5.0: 16 },
+  'bulky':     { 6.0: 12, 8.0: 10 },
+};
+
+let photoFiles = [];
+let currentJobId = null;
+let pollTimer    = null;
+
+// Auto-fill gauge when yarn/hook changes
+function updateGaugeFromYarn() {
+  const w = document.getElementById('yarnWeight').value;
+  const h = parseFloat(document.getElementById('hookSize').value);
+  const table = PHOTO_GAUGE_TABLE[w] || {};
+  const keys = Object.keys(table).map(Number);
+  if (keys.length === 0) return;
+  const closest = keys.reduce((a, b) => Math.abs(b - h) < Math.abs(a - h) ? b : a, keys[0]);
+  document.getElementById('gaugeVal').value = table[closest];
+}
+
+document.getElementById('yarnWeight').addEventListener('change', updateGaugeFromYarn);
+document.getElementById('hookSize').addEventListener('change', updateGaugeFromYarn);
+
+// Enable/disable Generate button
+function checkGenerateReady() {
+  const hasPhotos = photoFiles.length > 0;
+  const hasHeight = parseFloat(document.getElementById('heightCm').value) > 0;
+  document.getElementById('generatePhotoBtn').disabled = !(hasPhotos && hasHeight);
+}
+document.getElementById('heightCm').addEventListener('input', checkGenerateReady);
+
+// Drag and drop
+const dropZone   = document.getElementById('dropZone');
+const photoInput = document.getElementById('photoInput');
+
+dropZone.addEventListener('click', () => photoInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  addPhotos(Array.from(e.dataTransfer.files));
+});
+photoInput.addEventListener('change', () => { addPhotos(Array.from(photoInput.files)); photoInput.value = ''; });
+
+function addPhotos(files) {
+  const images = files.filter(f => f.type.startsWith('image/'));
+  photoFiles = [...photoFiles, ...images];
+  renderThumbs();
+  checkGenerateReady();
+}
+
+function renderThumbs() {
+  const strip = document.getElementById('thumbStrip');
+  strip.innerHTML = '';
+  photoFiles.forEach((file, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'thumb-wrap';
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(file);
+    const rm = document.createElement('button');
+    rm.className = 'thumb-rm';
+    rm.textContent = '×';
+    rm.title = 'Remove';
+    rm.addEventListener('click', () => { photoFiles.splice(i, 1); renderThumbs(); checkGenerateReady(); });
+    wrap.append(img, rm);
+    strip.appendChild(wrap);
+  });
+}
+
+// Progress overlay helpers
+const STEP_IDS    = ['ps1','ps2','ps3','ps4'];
+const STEP_LABELS = ['Analyzing photos','Building 3D model','Cleaning mesh','Calculating pattern'];
+const CHECK_SVG = `<svg class="step-icon" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--sage)" stroke-width="1.5"/><polyline points="5,8 7,10 11,6" fill="none" stroke="var(--sage)" stroke-width="1.5"/></svg>`;
+const SPIN_SVG  = `<svg class="step-icon spin" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="20 18"/></svg>`;
+const PEND_SVG  = `<svg class="step-icon" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--bdr-d)" stroke-width="1.5"/></svg>`;
+
+function showProgress() {
+  document.getElementById('progressOverlay').classList.add('visible');
+  STEP_IDS.forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.className = 'progress-step';
+    el.innerHTML = `${PEND_SVG} ${STEP_LABELS[i]}`;
+  });
+}
+
+function setProgressStep(stepName) {
+  const stepMap = {
+    'Analyzing photos':   0,
+    'Building 3D model':  1,
+    'Cleaning mesh':      2,
+    'Calculating pattern':3,
+    'Done':               4,
+  };
+  const activeIdx = stepMap[stepName] ?? -1;
+  STEP_IDS.forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (i < activeIdx) {
+      el.className = 'progress-step done';
+      el.innerHTML = `${CHECK_SVG} ${STEP_LABELS[i]}`;
+    } else if (i === activeIdx) {
+      el.className = 'progress-step active';
+      el.innerHTML = `${SPIN_SVG} ${STEP_LABELS[i]}`;
+    } else {
+      el.className = 'progress-step';
+      el.innerHTML = `${PEND_SVG} ${STEP_LABELS[i]}`;
+    }
+  });
+}
+
+function hideProgress() {
+  document.getElementById('progressOverlay').classList.remove('visible');
+}
+
+// OBJ loader — load mesh into Three.js scene
+function loadMeshIntoViewer(meshUrl) {
+  const old = scene.getObjectByName('photoMesh');
+  if (old) scene.remove(old);
+
+  const loader = new THREE.OBJLoader();
+  loader.load(meshUrl, obj => {
+    obj.name = 'photoMesh';
+    const box = new THREE.Box3().setFromObject(obj);
+    const centre = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3()).length();
+    obj.position.sub(centre);
+    obj.scale.setScalar(2 / size);
+    obj.traverse(child => {
+      if (child.isMesh) {
+        child.material = new THREE.MeshStandardMaterial({ color: 0xC4956A, roughness: 0.8 });
+      }
+    });
+    scene.add(obj);
+  });
+}
+
+// Render amigurumi pattern in right panel
+function renderAmigurumiPattern(pattern, yarnWeight, hookSize, heightCm) {
+  const out = document.getElementById('patOut');
+  let html = `<div class="p-header">Amigurumi Pattern</div>`;
+  html += `<div class="p-sub">${yarnWeight} weight · ${hookSize}mm hook · ~${heightCm}cm tall</div>`;
+  html += `<div class="p-section">Abbreviations</div>`;
+  html += `<div class="p-note">MR = magic ring · sc = single crochet · inc = 2sc in same st · dec = invisible decrease · × = repeat · ( ) = stitch count</div>`;
+  for (const part of pattern.parts) {
+    html += `<div class="p-section">${esc(part.name)}</div>`;
+    html += `<div class="p-start">Magic Ring</div>`;
+    for (const rnd of part.rounds) {
+      if (rnd.stitch_count === 0) {
+        html += `<div class="p-end">${esc(rnd.instructions)}</div>`;
+      } else {
+        html += `<div class="p-rnd"><span class="rl">Rnd ${rnd.number}:</span> ${esc(rnd.instructions)} <span class="rs">(${rnd.stitch_count})</span></div>`;
+      }
+    }
+  }
+  out.innerHTML = html;
+}
+
+// Fetch pattern and render
+async function fetchAndRenderPattern(jobId) {
+  setProgressStep('Calculating pattern');
+  const gauge    = parseFloat(document.getElementById('gaugeVal').value);
+  const weight   = document.getElementById('yarnWeight').value;
+  const hook     = parseFloat(document.getElementById('hookSize').value);
+  const heightCm = parseFloat(document.getElementById('heightCm').value);
+
+  const resp = await fetch('/api/pattern', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ job_id: jobId, gauge_per_10cm: gauge,
+                           yarn_weight: weight, hook_size: hook, height_cm: heightCm }),
+  });
+  const pattern = await resp.json();
+
+  STEP_IDS.forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.className = 'progress-step done';
+    el.innerHTML = `${CHECK_SVG} ${STEP_LABELS[i]}`;
+  });
+  setTimeout(hideProgress, 800);
+
+  renderAmigurumiPattern(pattern, weight, hook, heightCm);
+
+  const pdfBtn = document.getElementById('downloadPdfBtn');
+  pdfBtn.style.display = '';
+  pdfBtn.onclick = () => { window.location.href = `/api/export/pdf/${jobId}`; };
+}
+
+// Main Generate handler
+document.getElementById('generatePhotoBtn').addEventListener('click', async () => {
+  if (photoFiles.length === 0) return;
+  const heightCm = parseFloat(document.getElementById('heightCm').value);
+  if (!heightCm || heightCm <= 0) {
+    document.getElementById('heightCm').classList.add('invalid');
+    return;
+  }
+  document.getElementById('heightCm').classList.remove('invalid');
+
+  const formData = new FormData();
+  formData.append('height_cm', heightCm);
+  photoFiles.forEach(f => formData.append('photos', f));
+
+  showProgress();
+  setProgressStep('Analyzing photos');
+  document.getElementById('generatePhotoBtn').disabled = true;
+
+  const resp = await fetch('/api/reconstruct', { method: 'POST', body: formData });
+  const { job_id } = await resp.json();
+  currentJobId = job_id;
+
+  pollTimer = setInterval(async () => {
+    const jr = await fetch(`/api/job/${job_id}`);
+    const job = await jr.json();
+
+    if (job.step) setProgressStep(job.step);
+
+    if (job.status === 'complete') {
+      clearInterval(pollTimer);
+      loadMeshIntoViewer(job.mesh_url);
+      await fetchAndRenderPattern(job_id);
+      document.getElementById('generatePhotoBtn').disabled = false;
+    } else if (job.status === 'error') {
+      clearInterval(pollTimer);
+      hideProgress();
+      alert('Pipeline error: ' + job.step);
+      document.getElementById('generatePhotoBtn').disabled = false;
+    }
+  }, 2000);
+});
 </script>
 </body>
 </html>
