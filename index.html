@@ -1636,6 +1636,7 @@ function addPhotos(files) {
 
 function renderThumbs() {
   const strip = document.getElementById('thumbStrip');
+  strip.querySelectorAll('img').forEach(img => URL.revokeObjectURL(img.src));
   strip.innerHTML = '';
   photoFiles.forEach((file, i) => {
     const wrap = document.createElement('div');
@@ -1722,7 +1723,7 @@ function loadMeshIntoViewer(meshUrl) {
 function renderAmigurumiPattern(pattern, yarnWeight, hookSize, heightCm) {
   const out = document.getElementById('patOut');
   let html = `<div class="p-header">Amigurumi Pattern</div>`;
-  html += `<div class="p-sub">${yarnWeight} weight · ${hookSize}mm hook · ~${heightCm}cm tall</div>`;
+  html += `<div class="p-sub">${esc(yarnWeight)} weight · ${Number(hookSize)}mm hook · ~${Number(heightCm)}cm tall</div>`;
   html += `<div class="p-section">Abbreviations</div>`;
   html += `<div class="p-note">MR = magic ring · sc = single crochet · inc = 2sc in same st · dec = invisible decrease · × = repeat · ( ) = stitch count</div>`;
   for (const part of pattern.parts) {
@@ -1732,7 +1733,7 @@ function renderAmigurumiPattern(pattern, yarnWeight, hookSize, heightCm) {
       if (rnd.stitch_count === 0) {
         html += `<div class="p-end">${esc(rnd.instructions)}</div>`;
       } else {
-        html += `<div class="p-rnd"><span class="rl">Rnd ${rnd.number}:</span> ${esc(rnd.instructions)} <span class="rs">(${rnd.stitch_count})</span></div>`;
+        html += `<div class="p-rnd"><span class="rl">Rnd ${Number(rnd.number)}:</span> ${esc(rnd.instructions)} <span class="rs">(${rnd.stitch_count})</span></div>`;
       }
     }
   }
@@ -1747,26 +1748,34 @@ async function fetchAndRenderPattern(jobId) {
   const hook     = parseFloat(document.getElementById('hookSize').value);
   const heightCm = parseFloat(document.getElementById('heightCm').value);
 
-  const resp = await fetch('/api/pattern', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ job_id: jobId, gauge_per_10cm: gauge,
-                           yarn_weight: weight, hook_size: hook, height_cm: heightCm }),
-  });
-  const pattern = await resp.json();
+  try {
+    const resp = await fetch('/api/pattern', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: jobId, gauge_per_10cm: gauge,
+                             yarn_weight: weight, hook_size: hook, height_cm: heightCm }),
+    });
+    if (!resp.ok) throw new Error(`Pattern API returned ${resp.status}`);
+    const pattern = await resp.json();
 
-  STEP_IDS.forEach((id, i) => {
-    const el = document.getElementById(id);
-    el.className = 'progress-step done';
-    el.innerHTML = `${CHECK_SVG} ${STEP_LABELS[i]}`;
-  });
-  setTimeout(hideProgress, 800);
+    STEP_IDS.forEach((id, i) => {
+      const el = document.getElementById(id);
+      el.className = 'progress-step done';
+      el.innerHTML = `${CHECK_SVG} ${STEP_LABELS[i]}`;
+    });
+    setTimeout(hideProgress, 800);
 
-  renderAmigurumiPattern(pattern, weight, hook, heightCm);
+    renderAmigurumiPattern(pattern, weight, hook, heightCm);
 
-  const pdfBtn = document.getElementById('downloadPdfBtn');
-  pdfBtn.style.display = '';
-  pdfBtn.onclick = () => { window.location.href = `/api/export/pdf/${jobId}`; };
+    document.getElementById('downloadPdfBtn').style.display = '';
+    document.getElementById('downloadPdfBtn').onclick = () => {
+      window.location.href = `/api/export/pdf/${jobId}`;
+    };
+  } catch (err) {
+    hideProgress();
+    alert('Failed to generate pattern: ' + err.message);
+    throw err; // re-throw so the poll handler can re-enable the button
+  }
 }
 
 // Main Generate handler
@@ -1792,20 +1801,27 @@ document.getElementById('generatePhotoBtn').addEventListener('click', async () =
   currentJobId = job_id;
 
   pollTimer = setInterval(async () => {
-    const jr = await fetch(`/api/job/${job_id}`);
-    const job = await jr.json();
+    try {
+      const jr = await fetch(`/api/job/${job_id}`);
+      const job = await jr.json();
 
-    if (job.step) setProgressStep(job.step);
+      if (job.step) setProgressStep(job.step);
 
-    if (job.status === 'complete') {
-      clearInterval(pollTimer);
-      loadMeshIntoViewer(job.mesh_url);
-      await fetchAndRenderPattern(job_id);
-      document.getElementById('generatePhotoBtn').disabled = false;
-    } else if (job.status === 'error') {
+      if (job.status === 'complete') {
+        clearInterval(pollTimer);
+        loadMeshIntoViewer(job.mesh_url);
+        await fetchAndRenderPattern(job_id);
+        document.getElementById('generatePhotoBtn').disabled = false;
+      } else if (job.status === 'error') {
+        clearInterval(pollTimer);
+        hideProgress();
+        alert('Error: ' + job.step);
+        document.getElementById('generatePhotoBtn').disabled = false;
+      }
+    } catch (err) {
       clearInterval(pollTimer);
       hideProgress();
-      alert('Pipeline error: ' + job.step);
+      alert('Network error while checking job status. Please try again.');
       document.getElementById('generatePhotoBtn').disabled = false;
     }
   }, 2000);
