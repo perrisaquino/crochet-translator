@@ -1,11 +1,11 @@
 import asyncio
 import uuid
-import shutil
 from pathlib import Path
 from threading import Lock
-from fastapi import BackgroundTasks, FastAPI, UploadFile, File, Form
+from fastapi import BackgroundTasks, Body, FastAPI, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+import io as _io
 
 TMP_DIR = Path("tmp")
 TMP_DIR.mkdir(exist_ok=True)
@@ -96,6 +96,53 @@ async def api_mesh(job_id: str):
     if not mesh_path.exists():
         return JSONResponse({"error": "mesh not found"}, status_code=404)
     return FileResponse(str(mesh_path), media_type="model/obj")
+
+
+@app.post("/api/pattern")
+async def api_pattern(payload: dict = Body(...)):
+    job_id = payload["job_id"]
+    gauge   = float(payload["gauge_per_10cm"])
+    height  = float(payload["height_cm"])
+
+    job = get_job(job_id)
+    if job is None or job["status"] != "complete":
+        return JSONResponse({"error": "job not ready"}, status_code=400)
+
+    mesh_path = str(TMP_DIR / job_id / "mesh.obj")
+    from pipeline.pattern_gen import generate_pattern
+    pattern = generate_pattern(mesh_path, gauge_per_10cm=gauge, height_cm=height)
+
+    update_job(job_id, pattern=pattern,
+               yarn_weight=payload.get("yarn_weight", ""),
+               hook_size=payload.get("hook_size", ""),
+               height_cm=height)
+    return pattern
+
+
+@app.get("/api/export/pdf/{job_id}")
+async def api_export_pdf(job_id: str):
+    job = get_job(job_id)
+    if job is None or "pattern" not in job:
+        return JSONResponse({"error": "no pattern"}, status_code=404)
+
+    from jinja2 import Environment, FileSystemLoader
+    import weasyprint
+
+    env = Environment(loader=FileSystemLoader("templates"))
+    template = env.get_template("pattern.html")
+    html = template.render(
+        pattern=job["pattern"],
+        yarn_weight=job.get("yarn_weight", ""),
+        hook_size=job.get("hook_size", ""),
+        height_cm=job.get("height_cm", ""),
+    )
+    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        _io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=amigurumi-pattern.pdf"},
+    )
 
 
 # Serve index.html and static assets — must be LAST

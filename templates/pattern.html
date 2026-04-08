@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: 'Georgia', serif; font-size: 11pt; color: #241C0C;
+         margin: 2cm; line-height: 1.6; }
+  h1   { font-size: 18pt; color: #8F5033; margin-bottom: 4px; }
+  h2   { font-size: 13pt; color: #8F5033; border-bottom: 1px solid #DDD0B8;
+         padding-bottom: 4px; margin-top: 18px; }
+  .meta { font-size: 9pt; color: #6A5E4A; margin-bottom: 16px; }
+  .abbrev { background: #F5EFE2; border: 1px solid #DDD0B8; border-radius: 6px;
+            padding: 8px 12px; font-size: 9pt; margin-bottom: 16px; }
+  .round  { font-family: 'Courier New', monospace; font-size: 10pt; padding: 2px 0; }
+  .rnd-num { color: #5F8F64; font-weight: bold; min-width: 50px; display: inline-block; }
+  .count  { color: #A09480; font-size: 9pt; margin-left: 8px; }
+  .note   { font-size: 9pt; color: #6A5E4A; border-left: 3px solid #B56B45;
+            padding-left: 8px; margin: 8px 0; }
+</style>
+</head>
+<body>
+
+<h1>Amigurumi Pattern</h1>
+<div class="meta">
+  Yarn: {{ yarn_weight | title }} weight &nbsp;|&nbsp;
+  Hook: {{ hook_size }}mm &nbsp;|&nbsp;
+  Finished height: approx. {{ height_cm }}cm
+</div>
+
+<div class="abbrev">
+  <strong>Abbreviations:</strong>
+  MR = magic ring &nbsp;·&nbsp; sc = single crochet &nbsp;·&nbsp;
+  inc = 2 sc in same st &nbsp;·&nbsp; dec = invisible decrease &nbsp;·&nbsp;
+  × = repeat &nbsp;·&nbsp; ( ) = stitch count at end of round
+</div>
+
+<div class="note">
+  Note: v1 patterns are generated without stuffing compensation. The finished piece
+  may run slightly large — test with a simple shape before complex objects.
+</div>
+
+{% for part in pattern.parts %}
+<h2>{{ part.name }}</h2>
+{% for rnd in part.rounds %}
+<div class="round">
+  <span class="rnd-num">Rnd {{ rnd.number }}:</span>
+  {{ rnd.instructions }}
+  {% if rnd.stitch_count > 0 %}
+  <span class="count">({{ rnd.stitch_count }})</span>
+  {% endif %}
+</div>
+{% endfor %}
+{% endfor %}
+
+</body>
+</html>
