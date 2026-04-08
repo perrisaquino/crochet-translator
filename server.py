@@ -7,7 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 import io as _io
 
-TMP_DIR = Path("tmp")
+BASE_DIR = Path(__file__).parent
+TMP_DIR = BASE_DIR / "tmp"
 TMP_DIR.mkdir(exist_ok=True)
 
 app = FastAPI()
@@ -128,7 +129,7 @@ async def api_export_pdf(job_id: str):
     from jinja2 import Environment, FileSystemLoader
     import weasyprint
 
-    env = Environment(loader=FileSystemLoader("templates"))
+    env = Environment(loader=FileSystemLoader(str(BASE_DIR / "templates")))
     template = env.get_template("pattern.html")
     html = template.render(
         pattern=job["pattern"],
@@ -146,7 +147,7 @@ async def api_export_pdf(job_id: str):
 
 
 # Serve index.html and static assets — must be LAST
-app.mount("/", StaticFiles(directory=".", html=True), name="static")
+app.mount("/", StaticFiles(directory=str(BASE_DIR), html=True), name="static")
 
 
 if __name__ == "__main__":

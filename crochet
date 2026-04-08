@@ -26,8 +26,8 @@ echo "  $URL"
 echo "  Ctrl+C to stop"
 echo ""
 
-# Open browser after a short delay (background)
-(sleep 1.5 && open "$URL") &
+# Open browser once the server is actually responding
+(until curl -sf "$URL" > /dev/null 2>&1; do sleep 0.3; done && open "$URL") &
 
 cd "$SCRIPT_DIR"
 exec "$VENV/bin/uvicorn" server:app --host 0.0.0.0 --port "$PORT"
