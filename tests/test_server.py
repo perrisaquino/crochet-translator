@@ -1,4 +1,6 @@
+import io
 import pytest
+from unittest.mock import patch
 from httpx import AsyncClient, ASGITransport
 from server import app
 
@@ -24,3 +26,27 @@ async def test_job_lifecycle():
     assert get_job(job_id)["step"] == "Analyzing photos"
     update_job(job_id, status="complete", mesh_url=f"/api/mesh/{job_id}")
     assert get_job(job_id)["status"] == "complete"
+
+@pytest.mark.asyncio
+async def test_reconstruct_returns_job_id():
+    fake_image = io.BytesIO(b"fake_image_bytes")
+
+    async def mock_pipeline(job_id, image_paths, height_cm):
+        from server import update_job
+        update_job(job_id, status="complete", step="Done", mesh_url=f"/api/mesh/{job_id}")
+
+    with patch("server.run_pipeline", side_effect=mock_pipeline):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/reconstruct",
+                data={"height_cm": "10.0"},
+                files={"photos": ("photo.jpg", fake_image, "image/jpeg")},
+            )
+    assert resp.status_code == 200
+    assert "job_id" in resp.json()
+
+@pytest.mark.asyncio
+async def test_mesh_endpoint_returns_404_for_missing_job():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/mesh/no-such-job")
+    assert resp.status_code == 404
