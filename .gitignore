@@ -1,0 +1,5 @@
+tmp/
+*.obj
+*.pyc
+__pycache__/
+.pytest_cache/
