@@ -1,25 +1,30 @@
 import uuid
-from pathlib import Path
+from threading import Lock
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse
 
 app = FastAPI()
 _jobs: dict[str, dict] = {}
+_jobs_lock = Lock()
 
 
 def create_job() -> str:
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "pending", "step": None, "mesh_url": None}
+    with _jobs_lock:
+        _jobs[job_id] = {"status": "pending", "step": None, "mesh_url": None}
     return job_id
 
 
 def update_job(job_id: str, **kwargs) -> None:
-    _jobs[job_id].update(kwargs)
+    with _jobs_lock:
+        if job_id in _jobs:
+            _jobs[job_id].update(kwargs)
 
 
 def get_job(job_id: str) -> dict | None:
-    return _jobs.get(job_id)
+    with _jobs_lock:
+        return _jobs.get(job_id)
 
 
 @app.get("/api/job/{job_id}")
